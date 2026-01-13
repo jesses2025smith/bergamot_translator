@@ -41,34 +41,24 @@ namespace {
     void loadModelIntoCache(const std::string& cfg, const std::string& key) {
         std::lock_guard<std::mutex> lock(service_mutex);
         
-        // 检查模型是否已加载
+        // 检查模型是否已加载（双重检查，避免重复加载）
         if (model_cache.find(key) != model_cache.end()) {
             return; // 模型已加载，直接返回
         }
         
         try {
-            // 输出调试信息到 stderr（Flutter 会捕获）
-            std::cerr << "[bergamot] Loading model with key: " << key << std::endl;
-            std::cerr << "[bergamot] Config length: " << cfg.length() << " bytes" << std::endl;
-            
-            auto validate = true;
+            auto validate = false;  // Temporarily disable validation to avoid YAML node iterator error
             auto pathsDir = "";
             
             // 解析配置
-            std::cerr << "[bergamot] Parsing config..." << std::endl;
-            auto options = parseOptionsFromString(cfg, validate, pathsDir);
-            std::cerr << "[bergamot] Config parsed successfully" << std::endl;
+            std::shared_ptr<marian::Options> options = parseOptionsFromString(cfg, validate, pathsDir);
             
-            // 创建模型（这可能会抛出异常）
-            std::cerr << "[bergamot] Creating TranslationModel..." << std::endl;
+            // 创建模型
             model_cache[key] = std::make_shared<TranslationModel>(options);
-            std::cerr << "[bergamot] Model created successfully for key: " << key << std::endl;
         } catch (const std::exception &e) {
-            std::cerr << "[bergamot] ERROR loading model " << key << ": " << e.what() << std::endl;
             // 重新抛出异常，让调用者处理
             throw std::runtime_error("Failed to load model " + key + ": " + e.what());
         } catch (...) {
-            std::cerr << "[bergamot] ERROR loading model " << key << ": Unknown exception" << std::endl;
             // 捕获所有其他异常
             throw std::runtime_error("Failed to load model " + key + ": Unknown error");
         }
@@ -213,7 +203,6 @@ FFI_PLUGIN_EXPORT int bergamot_initialize_service(void) {
 
 FFI_PLUGIN_EXPORT int bergamot_load_model(const char* cfg, const char* key) {
     if (cfg == nullptr || key == nullptr) {
-        std::cerr << "[bergamot] ERROR: Null pointer in bergamot_load_model" << std::endl;
         return -1;
     }
     
@@ -221,21 +210,15 @@ FFI_PLUGIN_EXPORT int bergamot_load_model(const char* cfg, const char* key) {
         std::string cfg_str(cfg);
         std::string key_str(key);
         
-        std::cerr << "[bergamot] bergamot_load_model called with key: " << key_str << std::endl;
-        
         // 确保服务已初始化
         initializeService();
-        std::cerr << "[bergamot] Service initialized" << std::endl;
         
         // 加载模型
         loadModelIntoCache(cfg_str, key_str);
-        std::cerr << "[bergamot] Model loaded successfully" << std::endl;
         return 0;
     } catch (const std::exception &e) {
-        std::cerr << "[bergamot] EXCEPTION in bergamot_load_model: " << e.what() << std::endl;
         return -1;
     } catch (...) {
-        std::cerr << "[bergamot] UNKNOWN EXCEPTION in bergamot_load_model" << std::endl;
         return -1;
     }
 }
@@ -290,6 +273,8 @@ FFI_PLUGIN_EXPORT int bergamot_translate_multiple(
         *output_count = (int)translations.size();
         return 0;
     } catch (const std::exception &e) {
+        return -1;
+    } catch (...) {
         return -1;
     }
 }

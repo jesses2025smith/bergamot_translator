@@ -3,6 +3,16 @@
 # the plugin to fail to compile for some customers of the plugin.
 cmake_minimum_required(VERSION 3.10)
 
+# Set CMake policies to suppress warnings from third-party libraries
+# Policy CMP0153: Suppress exec_program deprecation warning (used by FindSSE.cmake in marian-dev)
+if(POLICY CMP0153)
+    cmake_policy(SET CMP0153 OLD)
+endif()
+
+# Suppress deprecation warnings about cmake_minimum_required version
+# These warnings come from third-party libraries
+set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress CMake deprecation warnings" FORCE)
+
 project(bergamot_translator_library VERSION 0.0.1 LANGUAGES CXX)
 
 # Include third-party library configurations
@@ -25,12 +35,17 @@ target_compile_definitions(bergamot_translator PUBLIC DART_SHARED_LIB)
 
 # Link third-party include directories and libraries
 # Note: bergamot-translator must come before other libraries to ensure proper symbol resolution
+# yaml-cpp must be linked before marian-data to ensure YAML::Clone symbols are available
+# ssplit must be linked for SentenceSplitter symbols (used by text_processor)
+# marian must be linked for ExpressionGraph and other marian core symbols (used by translation_model)
 target_link_libraries(bergamot_translator PRIVATE 
     bergamot-translator
     third_party_includes
     cld2
     yaml-cpp
     marian-data
+    marian  # Required for marian::ExpressionGraph and other marian core symbols
+    ssplit  # Required for ug::ssplit::SentenceSplitter (used by text_processor)
 )
 
 # Add compile options to suppress warnings
