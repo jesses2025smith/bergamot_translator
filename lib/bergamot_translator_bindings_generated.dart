@@ -15,55 +15,222 @@ import 'dart:ffi' as ffi;
 class BergamotTranslatorBindings {
   /// Holds the symbol lookup function.
   final ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-      _lookup;
+  _lookup;
 
   /// The symbols are looked up in [dynamicLibrary].
   BergamotTranslatorBindings(ffi.DynamicLibrary dynamicLibrary)
-      : _lookup = dynamicLibrary.lookup;
+    : _lookup = dynamicLibrary.lookup;
 
   /// The symbols are looked up with [lookup].
   BergamotTranslatorBindings.fromLookup(
-      ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName)
-          lookup)
-      : _lookup = lookup;
+    ffi.Pointer<T> Function<T extends ffi.NativeType>(String symbolName) lookup,
+  ) : _lookup = lookup;
 
-  /// A very short-lived native function.
-  ///
-  /// For very short-lived functions, it is fine to call them on the main isolate.
-  /// They will block the Dart execution while running the native function, so
-  /// only do this for native functions which are guaranteed to be short-lived.
-  int sum(
-    int a,
-    int b,
+  /// 初始化翻译服务
+  /// 返回: 0 成功, 非0 失败
+  int bergamot_initialize_service() {
+    return _bergamot_initialize_service();
+  }
+
+  late final _bergamot_initialize_servicePtr =
+      _lookup<ffi.NativeFunction<ffi.Int Function()>>(
+        'bergamot_initialize_service',
+      );
+  late final _bergamot_initialize_service = _bergamot_initialize_servicePtr
+      .asFunction<int Function()>();
+
+  /// 加载模型到缓存
+  /// cfg: 模型配置字符串（JSON格式）
+  /// key: 模型缓存键
+  /// 返回: 0 成功, 非0 失败
+  int bergamot_load_model(
+    ffi.Pointer<ffi.Char> cfg,
+    ffi.Pointer<ffi.Char> key,
   ) {
-    return _sum(
-      a,
-      b,
+    return _bergamot_load_model(cfg, key);
+  }
+
+  late final _bergamot_load_modelPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)
+        >
+      >('bergamot_load_model');
+  late final _bergamot_load_model = _bergamot_load_modelPtr
+      .asFunction<int Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Char>)>();
+
+  /// 批量翻译
+  /// inputs: 输入字符串数组
+  /// input_count: 输入字符串数量
+  /// key: 模型缓存键
+  /// outputs: 输出字符串数组（调用者需要释放内存）
+  /// output_count: 输出字符串数量
+  /// 返回: 0 成功, 非0 失败
+  /// 注意: outputs 需要调用 bergamot_free_string_array 释放
+  int bergamot_translate_multiple(
+    ffi.Pointer<ffi.Pointer<ffi.Char>> inputs,
+    int input_count,
+    ffi.Pointer<ffi.Char> key,
+    ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outputs,
+    ffi.Pointer<ffi.Int> output_count,
+  ) {
+    return _bergamot_translate_multiple(
+      inputs,
+      input_count,
+      key,
+      outputs,
+      output_count,
     );
   }
 
-  late final _sumPtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Int, ffi.Int)>>('sum');
-  late final _sum = _sumPtr.asFunction<int Function(int, int)>();
+  late final _bergamot_translate_multiplePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(
+            ffi.Pointer<ffi.Pointer<ffi.Char>>,
+            ffi.Int,
+            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+            ffi.Pointer<ffi.Int>,
+          )
+        >
+      >('bergamot_translate_multiple');
+  late final _bergamot_translate_multiple = _bergamot_translate_multiplePtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<ffi.Pointer<ffi.Char>>,
+          int,
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+          ffi.Pointer<ffi.Int>,
+        )
+      >();
 
-  /// A longer lived native function, which occupies the thread calling it.
-  ///
-  /// Do not call these kind of native functions in the main isolate. They will
-  /// block Dart execution. This will cause dropped frames in Flutter applications.
-  /// Instead, call these native functions on a separate isolate.
-  int sum_long_running(
-    int a,
-    int b,
+  /// 枢轴翻译（通过中间语言）
+  /// first_key: 第一个模型缓存键（源语言 -> 中间语言）
+  /// second_key: 第二个模型缓存键（中间语言 -> 目标语言）
+  /// inputs: 输入字符串数组
+  /// input_count: 输入字符串数量
+  /// outputs: 输出字符串数组（调用者需要释放内存）
+  /// output_count: 输出字符串数量
+  /// 返回: 0 成功, 非0 失败
+  /// 注意: outputs 需要调用 bergamot_free_string_array 释放
+  int bergamot_pivot_multiple(
+    ffi.Pointer<ffi.Char> first_key,
+    ffi.Pointer<ffi.Char> second_key,
+    ffi.Pointer<ffi.Pointer<ffi.Char>> inputs,
+    int input_count,
+    ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>> outputs,
+    ffi.Pointer<ffi.Int> output_count,
   ) {
-    return _sum_long_running(
-      a,
-      b,
+    return _bergamot_pivot_multiple(
+      first_key,
+      second_key,
+      inputs,
+      input_count,
+      outputs,
+      output_count,
     );
   }
 
-  late final _sum_long_runningPtr =
-      _lookup<ffi.NativeFunction<ffi.Int Function(ffi.Int, ffi.Int)>>(
-          'sum_long_running');
-  late final _sum_long_running =
-      _sum_long_runningPtr.asFunction<int Function(int, int)>();
+  late final _bergamot_pivot_multiplePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(
+            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<ffi.Pointer<ffi.Char>>,
+            ffi.Int,
+            ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+            ffi.Pointer<ffi.Int>,
+          )
+        >
+      >('bergamot_pivot_multiple');
+  late final _bergamot_pivot_multiple = _bergamot_pivot_multiplePtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<ffi.Pointer<ffi.Char>>,
+          int,
+          ffi.Pointer<ffi.Pointer<ffi.Pointer<ffi.Char>>>,
+          ffi.Pointer<ffi.Int>,
+        )
+      >();
+
+  /// 语言检测
+  /// text: 待检测文本
+  /// hint: 语言提示（可选，可为NULL）
+  /// result: 检测结果结构体指针
+  /// 返回: 0 成功, 非0 失败
+  int bergamot_detect_language(
+    ffi.Pointer<ffi.Char> text,
+    ffi.Pointer<ffi.Char> hint,
+    ffi.Pointer<BergamotDetectionResult> result,
+  ) {
+    return _bergamot_detect_language(text, hint, result);
+  }
+
+  late final _bergamot_detect_languagePtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Int Function(
+            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<ffi.Char>,
+            ffi.Pointer<BergamotDetectionResult>,
+          )
+        >
+      >('bergamot_detect_language');
+  late final _bergamot_detect_language = _bergamot_detect_languagePtr
+      .asFunction<
+        int Function(
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<ffi.Char>,
+          ffi.Pointer<BergamotDetectionResult>,
+        )
+      >();
+
+  /// 清理资源（释放所有模型和服务）
+  void bergamot_cleanup() {
+    return _bergamot_cleanup();
+  }
+
+  late final _bergamot_cleanupPtr =
+      _lookup<ffi.NativeFunction<ffi.Void Function()>>('bergamot_cleanup');
+  late final _bergamot_cleanup = _bergamot_cleanupPtr
+      .asFunction<void Function()>();
+
+  /// 释放字符串数组内存
+  /// array: 字符串数组指针
+  /// count: 数组元素数量
+  void bergamot_free_string_array(
+    ffi.Pointer<ffi.Pointer<ffi.Char>> array,
+    int count,
+  ) {
+    return _bergamot_free_string_array(array, count);
+  }
+
+  late final _bergamot_free_string_arrayPtr =
+      _lookup<
+        ffi.NativeFunction<
+          ffi.Void Function(ffi.Pointer<ffi.Pointer<ffi.Char>>, ffi.Int)
+        >
+      >('bergamot_free_string_array');
+  late final _bergamot_free_string_array = _bergamot_free_string_arrayPtr
+      .asFunction<void Function(ffi.Pointer<ffi.Pointer<ffi.Char>>, int)>();
+}
+
+/// 语言检测结果结构体
+final class BergamotDetectionResult extends ffi.Struct {
+  /// 语言代码（如 "en", "zh"）
+  @ffi.Array.multi([8])
+  external ffi.Array<ffi.Char> language;
+
+  /// 是否可靠（0/1）
+  @ffi.Int()
+  external int is_reliable;
+
+  /// 置信度（0-100）
+  @ffi.Int()
+  external int confidence;
 }

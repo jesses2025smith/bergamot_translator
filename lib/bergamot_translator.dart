@@ -1,131 +1,365 @@
-
-import 'dart:async';
-import 'dart:ffi';
+import 'dart:ffi' as ffi;
 import 'dart:io';
-import 'dart:isolate';
+
+import 'package:ffi/ffi.dart';
 
 import 'bergamot_translator_bindings_generated.dart';
 
-/// A very short-lived native function.
-///
-/// For very short-lived functions, it is fine to call them on the main isolate.
-/// They will block the Dart execution while running the native function, so
-/// only do this for native functions which are guaranteed to be short-lived.
-int sum(int a, int b) => _bindings.sum(a, b);
+/// Bergamot 翻译器异常
+class BergamotException implements Exception {
+  final String message;
+  final int? errorCode;
 
-/// A longer lived native function, which occupies the thread calling it.
-///
-/// Do not call these kind of native functions in the main isolate. They will
-/// block Dart execution. This will cause dropped frames in Flutter applications.
-/// Instead, call these native functions on a separate isolate.
-///
-/// Modify this to suit your own use case. Example use cases:
-///
-/// 1. Reuse a single isolate for various different kinds of requests.
-/// 2. Use multiple helper isolates for parallel execution.
-Future<int> sumAsync(int a, int b) async {
-  final SendPort helperIsolateSendPort = await _helperIsolateSendPort;
-  final int requestId = _nextSumRequestId++;
-  final _SumRequest request = _SumRequest(requestId, a, b);
-  final Completer<int> completer = Completer<int>();
-  _sumRequests[requestId] = completer;
-  helperIsolateSendPort.send(request);
-  return completer.future;
+  BergamotException(this.message, [this.errorCode]);
+
+  @override
+  String toString() =>
+      'BergamotException: $message${errorCode != null ? ' (code: $errorCode)' : ''}';
 }
 
-const String _libName = 'bergamot_translator';
+/// 语言检测结果
+class DetectionResult {
+  /// 语言代码（如 "en", "zh"）
+  final String language;
 
-/// The dynamic library in which the symbols for [BergamotTranslatorBindings] can be found.
-final DynamicLibrary _dylib = () {
-  if (Platform.isMacOS || Platform.isIOS) {
-    return DynamicLibrary.open('$_libName.framework/$_libName');
-  }
-  if (Platform.isAndroid || Platform.isLinux) {
-    return DynamicLibrary.open('lib$_libName.so');
-  }
-  if (Platform.isWindows) {
-    return DynamicLibrary.open('$_libName.dll');
-  }
-  throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
-}();
+  /// 是否可靠
+  final bool isReliable;
 
-/// The bindings to the native functions in [_dylib].
-final BergamotTranslatorBindings _bindings = BergamotTranslatorBindings(_dylib);
+  /// 置信度（0-100）
+  final int confidence;
 
+  DetectionResult({
+    required this.language,
+    required this.isReliable,
+    required this.confidence,
+  });
 
-/// A request to compute `sum`.
-///
-/// Typically sent from one isolate to another.
-class _SumRequest {
-  final int id;
-  final int a;
-  final int b;
-
-  const _SumRequest(this.id, this.a, this.b);
+  @override
+  String toString() =>
+      'DetectionResult(language: $language, isReliable: $isReliable, confidence: $confidence)';
 }
 
-/// A response with the result of `sum`.
-///
-/// Typically sent from one isolate to another.
-class _SumResponse {
-  final int id;
-  final int result;
+/// Bergamot 翻译器
+class BergamotTranslator {
+  static const String _libName = 'bergamot_translator';
 
-  const _SumResponse(this.id, this.result);
-}
+  /// 动态库实例
+  static ffi.DynamicLibrary? _dylib;
 
-/// Counter to identify [_SumRequest]s and [_SumResponse]s.
-int _nextSumRequestId = 0;
+  /// 绑定实例
+  static BergamotTranslatorBindings? _bindings;
 
-/// Mapping from [_SumRequest] `id`s to the completers corresponding to the correct future of the pending request.
-final Map<int, Completer<int>> _sumRequests = <int, Completer<int>>{};
+  /// 初始化动态库
+  static void _ensureInitialized() {
+    if (_dylib != null && _bindings != null) return;
 
-/// The SendPort belonging to the helper isolate.
-Future<SendPort> _helperIsolateSendPort = () async {
-  // The helper isolate is going to send us back a SendPort, which we want to
-  // wait for.
-  final Completer<SendPort> completer = Completer<SendPort>();
-
-  // Receive port on the main isolate to receive messages from the helper.
-  // We receive two types of messages:
-  // 1. A port to send messages on.
-  // 2. Responses to requests we sent.
-  final ReceivePort receivePort = ReceivePort()
-    ..listen((dynamic data) {
-      if (data is SendPort) {
-        // The helper isolate sent us the port on which we can sent it requests.
-        completer.complete(data);
-        return;
+    _dylib = () {
+      if (Platform.isMacOS || Platform.isIOS) {
+        return ffi.DynamicLibrary.open('$_libName.framework/$_libName');
       }
-      if (data is _SumResponse) {
-        // The helper isolate sent us a response to a request we sent.
-        final Completer<int> completer = _sumRequests[data.id]!;
-        _sumRequests.remove(data.id);
-        completer.complete(data.result);
-        return;
+      if (Platform.isAndroid || Platform.isLinux) {
+        return ffi.DynamicLibrary.open('lib$_libName.so');
       }
-      throw UnsupportedError('Unsupported message type: ${data.runtimeType}');
-    });
+      if (Platform.isWindows) {
+        return ffi.DynamicLibrary.open('$_libName.dll');
+      }
+      throw UnsupportedError('Unknown platform: ${Platform.operatingSystem}');
+    }();
 
-  // Start the helper isolate.
-  await Isolate.spawn((SendPort sendPort) async {
-    final ReceivePort helperReceivePort = ReceivePort()
-      ..listen((dynamic data) {
-        // On the helper isolate listen to requests and respond to them.
-        if (data is _SumRequest) {
-          final int result = _bindings.sum_long_running(data.a, data.b);
-          final _SumResponse response = _SumResponse(data.id, result);
-          sendPort.send(response);
-          return;
-        }
-        throw UnsupportedError('Unsupported message type: ${data.runtimeType}');
-      });
+    _bindings = BergamotTranslatorBindings(_dylib!);
+  }
 
-    // Send the port to the main isolate on which we can receive requests.
-    sendPort.send(helperReceivePort.sendPort);
-  }, receivePort.sendPort);
+  /// 初始化翻译服务
+  ///
+  /// 必须在调用其他方法之前调用此方法。
+  ///
+  /// 抛出 [BergamotException] 如果初始化失败。
+  static void initializeService() {
+    _ensureInitialized();
+    final result = _bindings!.bergamot_initialize_service();
+    if (result != 0) {
+      throw BergamotException('Failed to initialize service', result);
+    }
+  }
 
-  // Wait until the helper isolate has sent us back the SendPort on which we
-  // can start sending requests.
-  return completer.future;
-}();
+  /// 加载模型到缓存
+  ///
+  /// [cfg] 模型配置字符串（YAML格式）
+  /// [key] 模型缓存键，用于后续翻译时引用此模型
+  ///
+  /// 抛出 [BergamotException] 如果加载失败。
+  static void loadModel(String cfg, String key) {
+    _ensureInitialized();
+    final cfgPtr = cfg.toNativeUtf8();
+    final keyPtr = key.toNativeUtf8();
+    try {
+      final result = _bindings!.bergamot_load_model(
+        cfgPtr.cast<ffi.Char>(),
+        keyPtr.cast<ffi.Char>(),
+      );
+      if (result != 0) {
+        // 提供更详细的错误信息
+        throw BergamotException(
+          'Failed to load model: $key. '
+          'Please check: 1) Model files exist and are accessible, '
+          '2) Config YAML format is correct, '
+          '3) File paths in config are absolute and valid.',
+          result,
+        );
+      }
+    } catch (e) {
+      if (e is BergamotException) {
+        rethrow;
+      }
+      throw BergamotException('Unexpected error loading model $key: $e');
+    } finally {
+      malloc.free(cfgPtr);
+      malloc.free(keyPtr);
+    }
+  }
+
+  /// 批量翻译
+  ///
+  /// [inputs] 要翻译的文本列表
+  /// [key] 模型缓存键（必须已通过 [loadModel] 加载）
+  ///
+  /// 返回翻译结果列表，顺序与输入列表对应。
+  ///
+  /// 抛出 [BergamotException] 如果翻译失败。
+  static List<String> translateMultiple(List<String> inputs, String key) {
+    if (inputs.isEmpty) {
+      return [];
+    }
+
+    _ensureInitialized();
+
+    // 分配输入字符串数组
+    final inputPtrs = inputs
+        .map((s) => s.toNativeUtf8().cast<ffi.Char>())
+        .toList();
+    final inputsArray = malloc.allocate<ffi.Pointer<ffi.Char>>(
+      ffi.sizeOf<ffi.Pointer<ffi.Char>>() * inputs.length,
+    );
+
+    for (int i = 0; i < inputs.length; i++) {
+      inputsArray[i] = inputPtrs[i];
+    }
+
+    final keyPtr = key.toNativeUtf8().cast<ffi.Char>();
+    final outputsPtr = malloc.allocate<ffi.Pointer<ffi.Pointer<ffi.Char>>>(
+      ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Char>>>(),
+    );
+    final outputCountPtr = malloc<ffi.Int32>(ffi.sizeOf<ffi.Int32>());
+
+    try {
+      final result = _bindings!.bergamot_translate_multiple(
+        inputsArray,
+        inputs.length,
+        keyPtr,
+        outputsPtr,
+        outputCountPtr.cast(),
+      );
+
+      if (result != 0) {
+        throw BergamotException('Failed to translate', result);
+      }
+
+      final outputCount = outputCountPtr[0];
+      final outputsArray = outputsPtr.value;
+
+      final translations = <String>[];
+      for (int i = 0; i < outputCount; i++) {
+        final strPtr = outputsArray[i];
+        translations.add(strPtr.cast<Utf8>().toDartString());
+      }
+
+      // 释放 C 分配的内存
+      _bindings!.bergamot_free_string_array(outputsArray, outputCount);
+
+      return translations;
+    } finally {
+      // 释放输入字符串
+      for (final ptr in inputPtrs) {
+        malloc.free(ptr);
+      }
+      malloc.free(inputsArray);
+      malloc.free(keyPtr);
+      malloc.free(outputsPtr);
+      malloc.free(outputCountPtr);
+    }
+  }
+
+  /// 翻译单个文本
+  ///
+  /// [input] 要翻译的文本
+  /// [key] 模型缓存键（必须已通过 [loadModel] 加载）
+  ///
+  /// 返回翻译结果。
+  ///
+  /// 抛出 [BergamotException] 如果翻译失败。
+  static String translate(String input, String key) {
+    final results = translateMultiple([input], key);
+    if (results.isEmpty) {
+      throw BergamotException('Translation returned empty result');
+    }
+    return results.first;
+  }
+
+  /// 枢轴翻译（通过中间语言）
+  ///
+  /// [inputs] 要翻译的文本列表
+  /// [firstKey] 第一个模型缓存键（源语言 -> 中间语言）
+  /// [secondKey] 第二个模型缓存键（中间语言 -> 目标语言）
+  ///
+  /// 返回翻译结果列表，顺序与输入列表对应。
+  ///
+  /// 抛出 [BergamotException] 如果翻译失败。
+  static List<String> pivotMultiple(
+    List<String> inputs,
+    String firstKey,
+    String secondKey,
+  ) {
+    if (inputs.isEmpty) {
+      return [];
+    }
+
+    _ensureInitialized();
+
+    // 分配输入字符串数组
+    final inputPtrs = inputs
+        .map((s) => s.toNativeUtf8().cast<ffi.Char>())
+        .toList();
+    final inputsArray = malloc.allocate<ffi.Pointer<ffi.Char>>(
+      ffi.sizeOf<ffi.Pointer<ffi.Char>>() * inputs.length,
+    );
+
+    for (int i = 0; i < inputs.length; i++) {
+      inputsArray[i] = inputPtrs[i];
+    }
+
+    final firstKeyPtr = firstKey.toNativeUtf8().cast<ffi.Char>();
+    final secondKeyPtr = secondKey.toNativeUtf8().cast<ffi.Char>();
+    final outputsPtr = malloc.allocate<ffi.Pointer<ffi.Pointer<ffi.Char>>>(
+      ffi.sizeOf<ffi.Pointer<ffi.Pointer<ffi.Char>>>(),
+    );
+    final outputCountPtr = malloc<ffi.Int32>(ffi.sizeOf<ffi.Int32>());
+
+    try {
+      final result = _bindings!.bergamot_pivot_multiple(
+        firstKeyPtr,
+        secondKeyPtr,
+        inputsArray,
+        inputs.length,
+        outputsPtr,
+        outputCountPtr.cast(),
+      );
+
+      if (result != 0) {
+        throw BergamotException('Failed to pivot translate', result);
+      }
+
+      final outputCount = outputCountPtr[0];
+      final outputsArray = outputsPtr.value;
+
+      final translations = <String>[];
+      for (int i = 0; i < outputCount; i++) {
+        final strPtr = outputsArray[i];
+        translations.add(strPtr.cast<Utf8>().toDartString());
+      }
+
+      // 释放 C 分配的内存
+      _bindings!.bergamot_free_string_array(outputsArray, outputCount);
+
+      return translations;
+    } finally {
+      // 释放输入字符串
+      for (final ptr in inputPtrs) {
+        malloc.free(ptr);
+      }
+      malloc.free(inputsArray);
+      malloc.free(firstKeyPtr);
+      malloc.free(secondKeyPtr);
+      malloc.free(outputsPtr);
+      malloc.free(outputCountPtr);
+    }
+  }
+
+  /// 枢轴翻译单个文本（通过中间语言）
+  ///
+  /// [input] 要翻译的文本
+  /// [firstKey] 第一个模型缓存键（源语言 -> 中间语言）
+  /// [secondKey] 第二个模型缓存键（中间语言 -> 目标语言）
+  ///
+  /// 返回翻译结果。
+  ///
+  /// 抛出 [BergamotException] 如果翻译失败。
+  static String pivot(String input, String firstKey, String secondKey) {
+    final results = pivotMultiple([input], firstKey, secondKey);
+    if (results.isEmpty) {
+      throw BergamotException('Pivot translation returned empty result');
+    }
+    return results.first;
+  }
+
+  /// 检测语言
+  ///
+  /// [text] 待检测的文本
+  /// [hint] 可选的语言提示（如 "en", "zh"），可为 null
+  ///
+  /// 返回 [DetectionResult] 包含检测到的语言信息。
+  ///
+  /// 抛出 [BergamotException] 如果检测失败。
+  static DetectionResult detectLanguage(String text, [String? hint]) {
+    _ensureInitialized();
+
+    final textPtr = text.toNativeUtf8();
+    final hintPtr = hint?.toNativeUtf8();
+    final resultPtr = malloc.allocate<BergamotDetectionResult>(
+      ffi.sizeOf<BergamotDetectionResult>(),
+    );
+
+    try {
+      final result = _bindings!.bergamot_detect_language(
+        textPtr.cast<ffi.Char>(),
+        hintPtr?.cast<ffi.Char>() ?? ffi.Pointer<ffi.Char>.fromAddress(0),
+        resultPtr,
+      );
+
+      if (result != 0) {
+        throw BergamotException('Failed to detect language', result);
+      }
+
+      final detectionResult = resultPtr.ref;
+      final languageBytes = detectionResult.language;
+      // 将 Array<Char> 转换为字符串
+      final languageList = <int>[];
+      for (int i = 0; i < 8; i++) {
+        final char = languageBytes[i];
+        if (char == 0) break;
+        languageList.add(char);
+      }
+      final language = String.fromCharCodes(languageList);
+
+      return DetectionResult(
+        language: language,
+        isReliable: detectionResult.is_reliable != 0,
+        confidence: detectionResult.confidence,
+      );
+    } finally {
+      malloc.free(textPtr);
+      if (hintPtr != null) {
+        malloc.free(hintPtr);
+      }
+      malloc.free(resultPtr);
+    }
+  }
+
+  /// 清理资源（释放所有模型和服务）
+  ///
+  /// 在应用程序退出前调用此方法以释放所有资源。
+  static void cleanup() {
+    if (_bindings != null) {
+      _bindings!.bergamot_cleanup();
+    }
+  }
+}
