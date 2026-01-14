@@ -1,5 +1,7 @@
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:async';
 
 import 'package:ffi/ffi.dart';
 
@@ -34,9 +36,190 @@ class DetectionResult {
     required this.confidence,
   });
 
+  factory DetectionResult.fromJson(Map<String, dynamic> json) {
+    return DetectionResult(
+      language: json['language'] as String,
+      isReliable: json['isReliable'] as bool,
+      confidence: json['confidence'] as int,
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'language': language,
+    'isReliable': isReliable,
+    'confidence': confidence,
+  };
+
   @override
   String toString() =>
       'DetectionResult(language: $language, isReliable: $isReliable, confidence: $confidence)';
+}
+
+/// 内部：后台 Isolate 调度器
+///
+/// 目的：将同步 FFI 调用移出 UI isolate，避免掉帧/卡顿，并降低 debug 模式下的体感延迟。
+class _BergamotBackground {
+  static _BergamotBackground? _instance;
+
+  static _BergamotBackground get instance {
+    _instance ??= _BergamotBackground._();
+    return _instance!;
+  }
+
+  _BergamotBackground._();
+
+  Isolate? _isolate;
+  SendPort? _sendPort;
+  final ReceivePort _receivePort = ReceivePort();
+
+  int _nextId = 1;
+  final Map<int, Completer<Object?>> _pending = {};
+
+  Future<void> _ensureStarted() async {
+    if (_sendPort != null) return;
+
+    // 监听来自 worker isolate 的响应
+    _receivePort.listen((dynamic message) {
+      if (message is SendPort) {
+        _sendPort = message;
+        return;
+      }
+
+      if (message is! Map) return;
+      final id = message['id'];
+      if (id is! int) return;
+
+      final completer = _pending.remove(id);
+      if (completer == null) return;
+
+      final ok = message['ok'] == true;
+      if (ok) {
+        completer.complete(message['result']);
+      } else {
+        final err = message['error']?.toString() ?? 'Unknown error';
+        completer.completeError(BergamotException(err));
+      }
+    });
+
+    _isolate = await Isolate.spawn<_IsolateInit>(
+      _bergamotWorkerMain,
+      _IsolateInit(_receivePort.sendPort),
+      debugName: 'bergamot_translator_worker',
+    );
+
+    // 等待握手拿到 sendPort
+    final start = DateTime.now();
+    while (_sendPort == null) {
+      await Future<void>.delayed(const Duration(milliseconds: 1));
+      if (DateTime.now().difference(start).inSeconds > 5) {
+        throw BergamotException('Failed to start bergamot worker isolate (timeout)');
+      }
+    }
+  }
+
+  Future<T> _call<T>(String cmd, Map<String, Object?> payload) async {
+    await _ensureStarted();
+
+    final id = _nextId++;
+    final completer = Completer<Object?>();
+    _pending[id] = completer;
+
+    _sendPort!.send(<String, Object?>{
+      'id': id,
+      'cmd': cmd,
+      ...payload,
+    });
+
+    final result = await completer.future;
+    return result as T;
+  }
+
+  Future<void> initializeService() => _call<void>('init', const {});
+
+  Future<void> loadModel(String cfg, String key) =>
+      _call<void>('loadModel', <String, Object?>{'cfg': cfg, 'key': key});
+
+  Future<List<String>> translateMultiple(List<String> inputs, String key) =>
+      _call<List<String>>('translateMultiple', <String, Object?>{'inputs': inputs, 'key': key});
+
+  Future<List<String>> pivotMultiple(List<String> inputs, String firstKey, String secondKey) =>
+      _call<List<String>>('pivotMultiple', <String, Object?>{
+        'inputs': inputs,
+        'firstKey': firstKey,
+        'secondKey': secondKey,
+      });
+
+  Future<Map<String, Object?>> detectLanguage(String text, String? hint) =>
+      _call<Map<String, Object?>>('detectLanguage', <String, Object?>{'text': text, 'hint': hint});
+
+  Future<void> cleanup() => _call<void>('cleanup', const {});
+}
+
+class _IsolateInit {
+  final SendPort mainSendPort;
+  const _IsolateInit(this.mainSendPort);
+}
+
+void _bergamotWorkerMain(_IsolateInit init) {
+  final mainSendPort = init.mainSendPort;
+  final port = ReceivePort();
+  mainSendPort.send(port.sendPort);
+
+  // worker isolate 内部执行同步 FFI
+  port.listen((dynamic raw) {
+    if (raw is! Map) return;
+    final id = raw['id'];
+    final cmd = raw['cmd'];
+    if (id is! int || cmd is! String) return;
+
+    Map<String, Object?> ok(Object? result) => <String, Object?>{'id': id, 'ok': true, 'result': result};
+    Map<String, Object?> err(Object error) => <String, Object?>{'id': id, 'ok': false, 'error': error.toString()};
+
+    try {
+      switch (cmd) {
+        case 'init':
+          BergamotTranslator.initializeService();
+          mainSendPort.send(ok(null));
+          return;
+        case 'loadModel':
+          BergamotTranslator.loadModel(raw['cfg'] as String, raw['key'] as String);
+          mainSendPort.send(ok(null));
+          return;
+        case 'translateMultiple':
+          final inputs = (raw['inputs'] as List).cast<String>();
+          final key = raw['key'] as String;
+          final out = BergamotTranslator.translateMultiple(inputs, key);
+          mainSendPort.send(ok(out));
+          return;
+        case 'pivotMultiple':
+          final inputs = (raw['inputs'] as List).cast<String>();
+          final firstKey = raw['firstKey'] as String;
+          final secondKey = raw['secondKey'] as String;
+          final out = BergamotTranslator.pivotMultiple(inputs, firstKey, secondKey);
+          mainSendPort.send(ok(out));
+          return;
+        case 'detectLanguage':
+          final text = raw['text'] as String;
+          final hint = raw['hint'] as String?;
+          final res = BergamotTranslator.detectLanguage(text, hint);
+          mainSendPort.send(ok(<String, Object?>{
+            'language': res.language,
+            'isReliable': res.isReliable,
+            'confidence': res.confidence,
+          }));
+          return;
+        case 'cleanup':
+          BergamotTranslator.cleanup();
+          mainSendPort.send(ok(null));
+          return;
+        default:
+          mainSendPort.send(err('Unknown command: $cmd'));
+          return;
+      }
+    } catch (e) {
+      mainSendPort.send(err(e));
+    }
+  });
 }
 
 /// Bergamot 翻译器
@@ -82,6 +265,13 @@ class BergamotTranslator {
     }
   }
 
+  /// 初始化翻译服务（后台 Isolate 版本）
+  ///
+  /// 推荐在 Flutter 场景使用：避免同步 FFI 阻塞 UI isolate。
+  static Future<void> initializeServiceAsync() {
+    return _BergamotBackground.instance.initializeService();
+  }
+
   /// 加载模型到缓存
   ///
   /// [cfg] 模型配置字符串（YAML格式）
@@ -116,6 +306,13 @@ class BergamotTranslator {
       malloc.free(cfgPtr);
       malloc.free(keyPtr);
     }
+  }
+
+  /// 加载模型（后台 Isolate 版本）
+  ///
+  /// 推荐在 Flutter 场景使用：避免同步 FFI 阻塞 UI isolate。
+  static Future<void> loadModelAsync(String cfg, String key) {
+    return _BergamotBackground.instance.loadModel(cfg, key);
   }
 
   /// 批量翻译
@@ -187,6 +384,13 @@ class BergamotTranslator {
       malloc.free(outputsPtr);
       malloc.free(outputCountPtr);
     }
+  }
+
+  /// 批量翻译（后台 Isolate 版本）
+  ///
+  /// 推荐在 Flutter 场景使用：避免同步 FFI 阻塞 UI isolate。
+  static Future<List<String>> translateMultipleAsync(List<String> inputs, String key) {
+    return _BergamotBackground.instance.translateMultiple(inputs, key);
   }
 
   /// 翻译单个文本
@@ -284,6 +488,17 @@ class BergamotTranslator {
     }
   }
 
+  /// 枢轴翻译（后台 Isolate 版本）
+  ///
+  /// 推荐在 Flutter 场景使用：避免同步 FFI 阻塞 UI isolate。
+  static Future<List<String>> pivotMultipleAsync(
+    List<String> inputs,
+    String firstKey,
+    String secondKey,
+  ) {
+    return _BergamotBackground.instance.pivotMultiple(inputs, firstKey, secondKey);
+  }
+
   /// 枢轴翻译单个文本（通过中间语言）
   ///
   /// [input] 要翻译的文本
@@ -354,6 +569,14 @@ class BergamotTranslator {
     }
   }
 
+  /// 检测语言（后台 Isolate 版本）
+  ///
+  /// 推荐在 Flutter 场景使用：避免同步 FFI 阻塞 UI isolate。
+  static Future<DetectionResult> detectLanguageAsync(String text, [String? hint]) async {
+    final map = await _BergamotBackground.instance.detectLanguage(text, hint);
+    return DetectionResult.fromJson(map);
+  }
+
   /// 清理资源（释放所有模型和服务）
   ///
   /// 在应用程序退出前调用此方法以释放所有资源。
@@ -361,5 +584,10 @@ class BergamotTranslator {
     if (_bindings != null) {
       _bindings!.bergamot_cleanup();
     }
+  }
+
+  /// 清理资源（后台 Isolate 版本）
+  static Future<void> cleanupAsync() {
+    return _BergamotBackground.instance.cleanup();
   }
 }

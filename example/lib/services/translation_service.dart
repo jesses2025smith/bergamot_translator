@@ -1,4 +1,5 @@
 import 'package:bergamot_translator/bergamot_translator.dart' as bergamot;
+import 'dart:async';
 
 import '../model/language.dart';
 import '../model/manager.dart';
@@ -27,11 +28,15 @@ class TranslationService {
 
   // 跟踪已加载的模型，避免重复加载
   final _loadedModels = <String>{};
+  // 缓存生成的 YAML，避免重复 I/O + 字符串拼接
+  final _configCache = <String, String>{};
 
   TranslationService._() {
     // 初始化翻译服务
     try {
-      bergamot.BergamotTranslator.initializeService();
+      // 避免在 UI isolate 同步初始化 FFI，改用后台 isolate 版本
+      // ignore: unawaited_futures
+      bergamot.BergamotTranslator.initializeServiceAsync();
       info('TranslationService initialized');
     } catch (e) {
       error('Failed to initialize TranslationService: $e');
@@ -46,9 +51,11 @@ class TranslationService {
     
     final translationPairs = ModelManager.getTranslationPairs(from, to);
     for (final pair in translationPairs) {
+      final from = pair.$1;
+      final to = pair.$2;
       final isInstalled = await ModelManager.isLanguagePairInstalled(
-        pair.$1,
-        pair.$2,
+        from,
+        to,
       );
       if (!isInstalled) {
         return false;
@@ -61,7 +68,9 @@ class TranslationService {
   Future<void> preloadModel(Language from, Language to) async {
     final translationPairs = ModelManager.getTranslationPairs(from, to);
     for (final pair in translationPairs) {
-      final languageCode = '${pair.$1.code}${pair.$2.code}';
+      final from = pair.$1;
+      final to = pair.$2;
+      final languageCode = '${from.code}${to.code}';
       
       // 检查模型是否已加载（避免重复加载）
       if (_loadedModels.contains(languageCode)) {
@@ -71,10 +80,14 @@ class TranslationService {
       
       debug('Preloading model with key: $languageCode');
       try {
-        final config = await ModelManager.generateConfig(pair.$1, pair.$2);
-        bergamot.BergamotTranslator.loadModel(config, languageCode);
+        final config = _configCache[languageCode] ??
+            await ModelManager.generateConfig(from, to);
+        _configCache[languageCode] = config;
+
+        // 使用后台 isolate 版本加载，避免阻塞 UI
+        await bergamot.BergamotTranslator.loadModelAsync(config, languageCode);
         _loadedModels.add(languageCode); // 标记为已加载
-        info('Preloaded model for ${pair.$1.displayName} -> ${pair.$2.displayName}');
+        info('Preloaded model for ${from.displayName} -> ${to.displayName}');
       } catch (e) {
         error('Failed to preload model $languageCode: $e');
         rethrow;
@@ -104,19 +117,7 @@ class TranslationService {
         return TranslationResult.success('');
       }
 
-      // 检查语言对是否已安装
       final translationPairs = ModelManager.getTranslationPairs(from, to);
-      for (final pair in translationPairs) {
-        final isInstalled = await ModelManager.isLanguagePairInstalled(
-          pair.$1,
-          pair.$2,
-        );
-        if (!isInstalled) {
-          return TranslationResult.error(
-            'Language pair ${pair.$1.displayName} -> ${pair.$2.displayName} not installed',
-          );
-        }
-      }
 
       // 预加载模型
       await preloadModel(from, to);
@@ -145,19 +146,7 @@ class TranslationService {
         return TranslationResult.success(texts.join('\n'));
       }
 
-      // 检查语言对是否已安装
       final translationPairs = ModelManager.getTranslationPairs(from, to);
-      for (final pair in translationPairs) {
-        final isInstalled = await ModelManager.isLanguagePairInstalled(
-          pair.$1,
-          pair.$2,
-        );
-        if (!isInstalled) {
-          return TranslationResult.error(
-            'Language pair ${pair.$1.displayName} -> ${pair.$2.displayName} not installed',
-          );
-        }
-      }
 
       // 预加载模型
       await preloadModel(from, to);
@@ -176,22 +165,15 @@ class TranslationService {
     List<(Language, Language)> pairs,
     List<String> texts,
   ) async {
-    // 预加载所有模型
-    for (final pair in pairs) {
-      final config = await ModelManager.generateConfig(pair.$1, pair.$2);
-      final languageCode = '${pair.$1.code}${pair.$2.code}';
-      bergamot.BergamotTranslator.loadModel(config, languageCode);
-    }
-
     if (pairs.length == 1) {
       // 直接翻译
       final code = '${pairs[0].$1.code}${pairs[0].$2.code}';
-      return bergamot.BergamotTranslator.translateMultiple(texts, code);
+      return bergamot.BergamotTranslator.translateMultipleAsync(texts, code);
     } else if (pairs.length == 2) {
       // 枢轴翻译
       final toEng = '${pairs[0].$1.code}${pairs[0].$2.code}';
       final fromEng = '${pairs[1].$1.code}${pairs[1].$2.code}';
-      return bergamot.BergamotTranslator.pivotMultiple(texts, toEng, fromEng);
+      return bergamot.BergamotTranslator.pivotMultipleAsync(texts, toEng, fromEng);
     }
 
     return [];
@@ -200,7 +182,7 @@ class TranslationService {
   /// 检测语言
   Future<Language?> detectLanguage(String text, [Language? hint]) async {
     try {
-      final result = bergamot.BergamotTranslator.detectLanguage(
+      final result = await bergamot.BergamotTranslator.detectLanguageAsync(
         text,
         hint?.code,
       );
