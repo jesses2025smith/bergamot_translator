@@ -120,12 +120,6 @@ class _ModelManagerScreenState extends State<ModelManagerScreen> {
     });
   }
 
-  List<Language> get _availableLanguages {
-    return Language.values.where((lang) => 
-      fromEnglishFiles.containsKey(lang) || toEnglishFiles.containsKey(lang)
-    ).toList()..sort((a, b) => a.displayName.compareTo(b.displayName));
-  }
-
   List<Language> get _installedLanguageList {
     return _installedLanguages.entries
         .where((e) => e.value && e.key != Language.english)

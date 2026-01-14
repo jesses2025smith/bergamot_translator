@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:async';
-
-import 'package:bergamot_translator/bergamot_translator.dart' as bergamot_translator;
 import 'package:logging/logging.dart';
 
 import 'screens/translate.dart';
@@ -11,7 +8,7 @@ import 'screens/dictionary_manager.dart';
 void main() {
   Logger.root.level = Level.INFO;
   Logger.root.onRecord.listen((record) {
-    print('${record.level.name}: ${record.time}: ${record.message}');
+    debugPrint('${record.level.name}: ${record.time}: ${record.message}');
   });
 
   runApp(const MyApp());

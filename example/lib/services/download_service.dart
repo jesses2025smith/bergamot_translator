@@ -1,10 +1,7 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
-import 'package:http/http.dart' as http;
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
-import 'package:archive/archive.dart';
 
 import '../dictionary/dictionary.dart';
 import '../model/language.dart';
@@ -57,7 +54,7 @@ class DownloadService {
   static const String _defaultDictionaryBaseUrl = 'https://translator.davidv.dev/dictionaries';
   static const int _dictVersion = 1;
 
-  static DownloadService _instance = DownloadService._();
+  static final DownloadService _instance = DownloadService._();
   DownloadService._();
   factory DownloadService() {
     return _instance;

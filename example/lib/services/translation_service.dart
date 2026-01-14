@@ -3,7 +3,6 @@ import 'dart:async';
 
 import '../model/language.dart';
 import '../model/manager.dart';
-import '../utils/utils.dart' as utils;
 import '../utils/logger.dart';
 
 /// 翻译结果

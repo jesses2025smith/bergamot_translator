@@ -153,6 +153,13 @@ class _BergamotBackground {
       _call<Map<String, Object?>>('detectLanguage', <String, Object?>{'text': text, 'hint': hint});
 
   Future<void> cleanup() => _call<void>('cleanup', const {});
+
+  void shutdown() {
+    _isolate?.kill(priority: Isolate.immediate);
+    _isolate = null;
+    _sendPort = null;
+    _receivePort.close();
+  }
 }
 
 class _IsolateInit {
@@ -587,7 +594,18 @@ class BergamotTranslator {
   }
 
   /// 清理资源（后台 Isolate 版本）
-  static Future<void> cleanupAsync() {
-    return _BergamotBackground.instance.cleanup();
+  ///
+  /// 清理 C++ 端资源并关闭后台 Isolate。
+  static Future<void> cleanupAsync() async {
+    await _BergamotBackground.instance.cleanup();
+    _BergamotBackground.instance.shutdown();
+  }
+
+  /// 关闭后台 Isolate
+  ///
+  /// 仅关闭 Isolate，不清理 C++ 端资源。
+  /// 通常不需要单独调用，[cleanupAsync] 会自动调用此方法。
+  static void shutdownAsync() {
+    _BergamotBackground.instance.shutdown();
   }
 }

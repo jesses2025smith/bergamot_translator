@@ -3,7 +3,6 @@ import 'package:path/path.dart' as path;
 
 import 'constant.dart';
 import 'language.dart';
-import 'model.dart';
 import '../utils/logger.dart';
 import '../utils/utils.dart' as utils;
 
@@ -45,19 +44,6 @@ class ModelManager {
       for (final fileName in files.allFiles) {
         final exists = await utils.modelFileExists(fileName, targetLanguage);
         if (!exists) {
-          // 检查是否正在下载（有临时文件）
-          final langDir = await utils.getLanguageModelDirectory(targetLanguage);
-          final file = File(path.join(langDir.path, fileName));
-          final tempGzFile = File('${file.path}.gz');
-          final tempFile = File('${file.path}.tmp');
-          // final isDownloading = await tempGzFile.exists() || await tempFile.exists();
-          
-          // if (!isDownloading) {
-          //   // 只有在不正在下载时才输出警告
-          //   warning(
-          //     'Missing file: $fileName for ${from.displayName} -> ${to.displayName} in ${langDir.path}',
-          //   );
-          // }
           return false;
         }
       }

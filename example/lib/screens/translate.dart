@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../model/language.dart';
-import '../model/manager.dart';
 import '../services/translation_service.dart';
 import '../utils/utils.dart' as utils;
 import '../utils/logger.dart';
@@ -242,6 +241,7 @@ class _TranslateScreenState extends State<TranslateScreen> {
   Future<void> _copyToClipboard() async {
     if (_output.isNotEmpty) {
       await Clipboard.setData(ClipboardData(text: _output));
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('已复制到剪贴板')),
       );
@@ -413,7 +413,7 @@ class _TranslateScreenState extends State<TranslateScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.1),
+                color: Colors.orange.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -436,7 +436,7 @@ class _TranslateScreenState extends State<TranslateScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(
@@ -474,7 +474,7 @@ class _TranslateScreenState extends State<TranslateScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               margin: const EdgeInsets.only(bottom: 8),
               decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
+                color: Colors.blue.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(4),
               ),
               child: Row(

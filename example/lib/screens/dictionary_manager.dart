@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../model/language.dart';
-import '../model/constant.dart';
 import '../model/manager.dart';
 import '../services/download_service.dart';
 import '../dictionary/dictionary.dart';
@@ -103,8 +102,6 @@ class _DictionaryManagerScreenState extends State<DictionaryManagerScreen> {
     });
 
     final installed = <Language, bool>{};
-    // 通过扫描models目录下的文件夹来检测已安装的语言
-    final installedLanguagesList = await utils.getInstalledLanguages();
     
     for (final language in Language.values) {
       // 英语字典不是内置的，需要实际检查文件是否存在
