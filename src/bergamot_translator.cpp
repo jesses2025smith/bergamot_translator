@@ -197,12 +197,14 @@ FFI_PLUGIN_EXPORT int bergamot_initialize_service(void) {
         initializeService();
         return 0;
     } catch (const std::exception &e) {
+        std::cerr << "[bergamot_initialize_service] Error: " << e.what() << std::endl;
         return -1;
     }
 }
 
 FFI_PLUGIN_EXPORT int bergamot_load_model(const char* cfg, const char* key) {
     if (cfg == nullptr || key == nullptr) {
+        std::cerr << "[bergamot_load_model] Error: cfg or key parameter is invalid" << std::endl;
         return -1;
     }
     
@@ -217,8 +219,10 @@ FFI_PLUGIN_EXPORT int bergamot_load_model(const char* cfg, const char* key) {
         loadModelIntoCache(cfg_str, key_str);
         return 0;
     } catch (const std::exception &e) {
+        std::cerr << "[bergamot_load_model] Error: " << e.what() << std::endl;
         return -1;
     } catch (...) {
+        std::cerr << "[bergamot_load_model] Error: Unknown error" << std::endl;
         return -1;
     }
 }
@@ -231,6 +235,7 @@ FFI_PLUGIN_EXPORT int bergamot_translate_multiple(
     int* output_count
 ) {
     if (inputs == nullptr || input_count <= 0 || key == nullptr || outputs == nullptr || output_count == nullptr) {
+        std::cerr << "[bergamot_translate_multiple] Error: inputs parameter is invalid" << std::endl;
         return -1;
     }
     
@@ -273,8 +278,10 @@ FFI_PLUGIN_EXPORT int bergamot_translate_multiple(
         *output_count = (int)translations.size();
         return 0;
     } catch (const std::exception &e) {
+        std::cerr << "[bergamot_translate_multiple] Error: " << e.what() << std::endl;
         return -1;
     } catch (...) {
+        std::cerr << "[bergamot_translate_multiple] Error: Unknown error" << std::endl;
         return -1;
     }
 }
@@ -289,6 +296,7 @@ FFI_PLUGIN_EXPORT int bergamot_pivot_multiple(
 ) {
     if (first_key == nullptr || second_key == nullptr || inputs == nullptr || 
         input_count <= 0 || outputs == nullptr || output_count == nullptr) {
+        std::cerr << "[bergamot_pivot_multiple] Error: inputs parameter is invalid" << std::endl;
         return -1;
     }
     
@@ -331,6 +339,7 @@ FFI_PLUGIN_EXPORT int bergamot_pivot_multiple(
         *output_count = (int)translations.size();
         return 0;
     } catch (const std::exception &e) {
+        std::cerr << "[bergamot_pivot_multiple] Error: " << e.what() << std::endl;
         return -1;
     }
 }
@@ -341,6 +350,7 @@ FFI_PLUGIN_EXPORT int bergamot_detect_language(
     BergamotDetectionResult* result
 ) {
     if (text == nullptr || result == nullptr) {
+        std::cerr << "[bergamot_detect_language] Error: text or result parameter is invalid" << std::endl;
         return -1;
     }
     
@@ -356,6 +366,7 @@ FFI_PLUGIN_EXPORT int bergamot_detect_language(
         
         return 0;
     } catch (const std::exception &e) {
+        std::cerr << "[bergamot_detect_language] Error: " << e.what() << std::endl;
         return -1;
     }
 }
@@ -366,6 +377,7 @@ FFI_PLUGIN_EXPORT void bergamot_cleanup(void) {
 
 FFI_PLUGIN_EXPORT void bergamot_free_string_array(char** array, int count) {
     if (array == nullptr || count <= 0) {
+        std::cerr << "[bergamot_free_string_array] Error: array or count is invalid" << std::endl;
         return;
     }
     

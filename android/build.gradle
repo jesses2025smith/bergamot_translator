@@ -1,6 +1,6 @@
 // The Android Gradle Plugin builds the native code with the Android NDK.
 
-group = "com.example.bergamot_translator"
+group = "com.github.bergamot_translator"
 version = "1.0"
 
 buildscript {
@@ -25,7 +25,7 @@ rootProject.allprojects {
 apply plugin: "com.android.library"
 
 android {
-    namespace = "com.example.bergamot_translator"
+    namespace = "com.github.bergamot_translator"
 
     // Bumping the plugin compileSdk version requires all clients of this plugin
     // to bump the version in their app.
@@ -58,6 +58,11 @@ android {
     }
 
     defaultConfig {
-        minSdk = 24
+        minSdk = 28
+        // Limit native builds to arm64-v8a for now. armeabi-v7a hits missing NEON intrinsics
+        // in upstream marian/ruy SIMD code (e.g. vcvtnq_s32_f32).
+        ndk {
+            abiFilters "arm64-v8a", "x86_64"
+        }
     }
 }

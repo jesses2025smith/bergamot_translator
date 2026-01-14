@@ -24,10 +24,17 @@ android {
         applicationId = "com.example.bergamot_translator_example"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = maxOf(flutter.minSdkVersion, 28)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // NOTE: bergamot/marian-dev SIMD paths currently require arm64 intrinsics.
+        // Building armeabi-v7a triggers missing NEON intrinsics (e.g. vcvtnq_s32_f32) in ruy_interface.h.
+        ndk {
+            abiFilters.add("arm64-v8a")
+            abiFilters.add("x86_64")
+        }
     }
 
     buildTypes {

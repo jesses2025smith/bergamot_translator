@@ -35,8 +35,8 @@ target_link_libraries(bergamot-translator PUBLIC
 )
 
 # Link intgemm library if available (required for intgemm_config.h and intgemm functions)
-# intgemm is built when USE_INTGEMM is ON, which we set before add_subdirectory
-if(TARGET intgemm)
+# Only enable on platforms where USE_INTGEMM is intended (not Android ARM).
+if(USE_INTGEMM AND TARGET intgemm)
     target_link_libraries(bergamot-translator PUBLIC intgemm)
     message(STATUS "Linking intgemm library to bergamot-translator")
 endif()
@@ -47,8 +47,10 @@ target_compile_definitions(bergamot-translator PRIVATE COMPILE_CPU=1)
 
 # Add USE_INTGEMM definition (required for intgemm matrix operations)
 # Reference: marian-dev/CMakeLists.txt line 87-91: set(USE_INTGEMM ON) and add_compile_definitions(USE_INTGEMM=1)
-# This enables the use of intgemm library for optimized integer matrix multiplication
-target_compile_definitions(bergamot-translator PRIVATE USE_INTGEMM=1)
+# Only define when USE_INTGEMM is enabled; otherwise Marian will use the RUY/NEON path.
+if(USE_INTGEMM)
+    target_compile_definitions(bergamot-translator PRIVATE USE_INTGEMM=1)
+endif()
 
 # Add USE_RUY_SGEMM definition (required for CPU matrix multiplication)
 # RUY library is already in include path (third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/ruy)
@@ -63,4 +65,12 @@ target_compile_options(bergamot-translator PRIVATE
     -Wno-deprecated-declarations  # Suppress deprecated iterator warnings from yaml-cpp
     -fPIC  # Position Independent Code - required for linking into shared libraries
 )
+
+# For Android ARM platforms, ensure ARM, FMA, and SSE macros are defined
+# This is required for simd_utils.h to work correctly on ARM
+# Reference: marian-dev/CMakeLists.txt line 96: add_compile_definitions(ARM FMA SSE) for ARM
+if(ANDROID AND ANDROID_ABI MATCHES "arm")
+    target_compile_definitions(bergamot-translator PRIVATE ARM FMA SSE)
+    message(STATUS "Adding ARM FMA SSE compile definitions for bergamot-translator on Android ${ANDROID_ABI}")
+endif()
 

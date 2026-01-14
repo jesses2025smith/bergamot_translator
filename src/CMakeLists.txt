@@ -13,6 +13,16 @@ endif()
 # These warnings come from third-party libraries
 set(CMAKE_WARN_DEPRECATED OFF CACHE BOOL "Suppress CMake deprecation warnings" FORCE)
 
+# Android platform thread configuration (must be set before project() and add_subdirectory)
+# Android NDK has pthread support built-in, but CMake's FindThreads needs hints
+if(ANDROID)
+    message(STATUS "Configuring for Android platform - setting up thread support")
+    # Include custom FindThreads for Android BEFORE project() call
+    # This ensures our custom module is used instead of the default FindThreads
+    list(INSERT CMAKE_MODULE_PATH 0 "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+    include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/FindThreadsAndroid.cmake)
+endif()
+
 project(bergamot_translator_library VERSION 0.0.1 LANGUAGES CXX)
 
 # Include third-party library configurations

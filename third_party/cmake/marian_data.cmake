@@ -37,11 +37,19 @@ set(MARIAN_DATA_SOURCES
     ${MARIAN_DEV_INCLUDE_DIR}/common/io.cpp  # marian::io::isBin and other IO functions
     ${MARIAN_DEV_INCLUDE_DIR}/common/binary.cpp  # Required by io.cpp for binary file support
     ${MARIAN_DEV_INCLUDE_DIR}/common/file_stream.cpp  # InputFileStream and OutputFileStream (used by binary.cpp)
-    ${MARIAN_DEV_3RD_PARTY_INCLUDE_DIR}/ExceptionWithCallStack.cpp  # GetCallStack function (used by logging.cpp)
     ${MARIAN_DEV_3RD_PARTY_INCLUDE_DIR}/phf/phf.cc  # PHF library for PerfectHash (used by FastOpt)
     ${MARIAN_DEV_3RD_PARTY_INCLUDE_DIR}/cnpy/cnpy.cpp  # Required by io.cpp for npz file support
     ${PATHIE_SOURCES}
 )
+
+# ExceptionWithCallStack.cpp uses backtrace()/backtrace_symbols(), which are not available in Android NDK builds.
+# Upstream marian-dev also excludes it on Android:
+#   if (NOT USE_WASM_COMPATIBLE_SOURCE AND NOT ANDROID) ... ExceptionWithCallStack.cpp ...
+if(NOT ANDROID)
+    list(APPEND MARIAN_DATA_SOURCES
+        ${MARIAN_DEV_3RD_PARTY_INCLUDE_DIR}/ExceptionWithCallStack.cpp  # GetCallStack function (used by logging.cpp)
+    )
+endif()
 
 # Create minimal marian data static library
 add_library(marian-data STATIC ${MARIAN_DATA_SOURCES})
@@ -60,8 +68,8 @@ target_link_libraries(marian-data PUBLIC
 )
 
 # Link intgemm library if available (required for intgemm_config.h and intgemm functions)
-# intgemm is built when USE_INTGEMM is ON, which we set before add_subdirectory
-if(TARGET intgemm)
+# Only enable on platforms where USE_INTGEMM is intended (not Android ARM).
+if(USE_INTGEMM AND TARGET intgemm)
     target_link_libraries(marian-data PUBLIC intgemm)
     message(STATUS "Linking intgemm library to marian-data")
 endif()
@@ -132,8 +140,10 @@ target_compile_definitions(marian-data PRIVATE COMPILE_CPU=1)
 
 # Add USE_INTGEMM definition (required for intgemm matrix operations)
 # Reference: marian-dev/CMakeLists.txt line 87-91: set(USE_INTGEMM ON) and add_compile_definitions(USE_INTGEMM=1)
-# This enables the use of intgemm library for optimized integer matrix multiplication
-target_compile_definitions(marian-data PRIVATE USE_INTGEMM=1)
+# Only define when USE_INTGEMM is enabled; otherwise Marian will use the RUY/NEON path.
+if(USE_INTGEMM)
+    target_compile_definitions(marian-data PRIVATE USE_INTGEMM=1)
+endif()
 
 # Add USE_RUY_SGEMM definition (required for CPU matrix multiplication)
 # RUY library is already in include path (third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/ruy)
@@ -148,6 +158,28 @@ target_compile_options(marian-data PRIVATE
     -Wno-deprecated-declarations
     -fPIC
 )
+
+# For Android ARM platforms, ensure ARM, FMA, and SSE macros are defined
+# This is required for simd_utils.h to work correctly on ARM
+# Reference: marian-dev/CMakeLists.txt line 96: add_compile_definitions(ARM FMA SSE) for ARM
+if(ANDROID AND ANDROID_ABI MATCHES "arm")
+    target_compile_definitions(marian-data PRIVATE ARM FMA SSE)
+    message(STATUS "Adding ARM FMA SSE compile definitions for marian-data on Android ${ANDROID_ABI}")
+endif()
+
+# For Android platforms, define PATHIE_ASSUME_UTF8_ON_UNIX to avoid iconv/nl_langinfo dependencies
+# Android uses UTF-8 as filesystem encoding, so this is safe
+# Reference: pathie-cpp/README.md: PATHIE_ASSUME_UTF8_ON_UNIX forces Pathie to assume UTF-8 on UNIX
+# Note: This only affects utf8_to_filename and filename_to_utf8, not convert_encodings
+if(ANDROID)
+    target_compile_definitions(marian-data PRIVATE PATHIE_ASSUME_UTF8_ON_UNIX)
+    message(STATUS "Adding PATHIE_ASSUME_UTF8_ON_UNIX compile definition for marian-data on Android")
+    
+    # Disable backtrace on Android (not available in Android NDK)
+    # Reference: ExceptionWithCallStack.cpp uses backtrace() which is not available on Android
+    target_compile_definitions(marian-data PRIVATE ANDROID)
+    message(STATUS "Adding ANDROID compile definition for marian-data to disable backtrace")
+endif()
 
 # Create dummy version headers if they don't exist (needed by version.cpp)
 # These are workarounds for files that include git_revision.h and project_version.h

@@ -370,10 +370,14 @@ class _TranslateScreenState extends State<TranslateScreen> {
       future: _getAvailableLanguages(),
       builder: (context, snapshot) {
         final languages = snapshot.data ?? Language.values;
+        // 确保列表中没有重复项（使用 Set 去重）
+        final uniqueLanguages = languages.toSet().toList()..sort((a, b) => a.displayName.compareTo(b.displayName));
+        // 确保 value 在列表中，如果不在则使用 null（避免错误）
+        final selectedValue = uniqueLanguages.contains(value) ? value : null;
         return DropdownButton<Language>(
-          value: value,
+          value: selectedValue,
           isExpanded: true,
-          items: languages.map((lang) {
+          items: uniqueLanguages.map((lang) {
             return DropdownMenuItem<Language>(
               value: lang,
               child: Text(lang.displayName),
@@ -388,9 +392,13 @@ class _TranslateScreenState extends State<TranslateScreen> {
   Future<List<Language>> _getAvailableLanguages() async {
     final installed = await utils.getInstalledLanguages();
     // 英语总是可用（内置）
+    // 使用 Set 确保没有重复项
     final available = <Language>{Language.english};
     available.addAll(installed);
-    return available.toList()..sort((a, b) => a.displayName.compareTo(b.displayName));
+    // 转换为列表并去重（双重保险）
+    final uniqueLanguages = available.toList();
+    uniqueLanguages.sort((a, b) => a.displayName.compareTo(b.displayName));
+    return uniqueLanguages;
   }
 
   Widget _buildInputArea() {
