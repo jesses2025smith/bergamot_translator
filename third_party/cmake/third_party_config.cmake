@@ -90,6 +90,36 @@ if(ANDROID)
     set(Threads_FOUND TRUE CACHE INTERNAL "Threads are available on Android")
 endif()
 
+# Detect macOS ARM64 platform (Apple Silicon)
+if(APPLE AND NOT IOS AND CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+    message(STATUS "Configuring for macOS ARM64 platform (Apple Silicon)")
+    
+    # Enable SIMD utils for ARM platform (required for NEON support)
+    # Reference: marian-dev/CMakeLists.txt line 78: set(USE_SIMD_UTILS ON) for ARM
+    # This enables simd_utils.h which provides NEON implementations of _mm_* functions
+    set(USE_SIMD_UTILS ON CACHE BOOL "Enable simde to target instruction sets" FORCE)
+    
+    # Disable WASM compatible sources (required for proper ARM/NEON support)
+    set(USE_WASM_COMPATIBLE_SOURCES OFF CACHE BOOL "Enable the minimal marian sources that compile to wasm" FORCE)
+    
+    # Force CMAKE_TARGET_ARCHITECTURE_CODE to "arm" for macOS ARM64
+    # This ensures marian-dev's CMakeLists.txt correctly detects ARM and enables USE_SIMD_UTILS
+    # Reference: marian-dev/CMakeLists.txt line 68: if(${CMAKE_TARGET_ARCHITECTURE_CODE} MATCHES "arm")
+    set(CMAKE_TARGET_ARCHITECTURE_CODE "arm" CACHE STRING "Target architecture code" FORCE)
+    message(STATUS "Setting CMAKE_TARGET_ARCHITECTURE_CODE to 'arm' for macOS ARM64")
+    
+    # Disable USE_INTGEMM for macOS ARM64 (it's x86/SSE-centric)
+    # Reference: marian-dev/CMakeLists.txt: ARM builds should use RUY/NEON paths instead of intgemm
+    set(USE_INTGEMM OFF CACHE BOOL "Use INTGEMM" FORCE)
+    message(STATUS "Disabling USE_INTGEMM for macOS ARM64")
+    
+    # Add global compile definitions for ARM, FMA, and SSE
+    # This ensures simd_utils.h uses NEON instead of x86 intrinsics
+    # Reference: marian-dev/CMakeLists.txt line 96: add_compile_definitions(ARM FMA SSE) for ARM
+    add_compile_definitions(ARM FMA SSE)
+    message(STATUS "Adding global ARM FMA SSE compile definitions for macOS ARM64 platform")
+endif()
+
 # Suppress CMake warnings from third-party libraries
 # Set policy to suppress exec_program deprecation warning (CMP0153)
 # This is needed because FindSSE.cmake uses exec_program
@@ -115,11 +145,15 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # Set USE_INTGEMM option before adding subdirectory (controls whether intgemm is built)
 # IMPORTANT: intgemm is x86/SSE-centric and includes <emmintrin.h>. For Android ARM (arm64-v8a/armeabi-v7a)
-# this causes compilation failures ("emmintrin.h only meant for x86/x64").
+# and macOS ARM64 this causes compilation failures ("emmintrin.h only meant for x86/x64").
 # Align behavior with marian-dev upstream: ARM builds should use RUY/NEON paths instead of intgemm.
-if(ANDROID AND ANDROID_ABI MATCHES "arm")
+if((ANDROID AND ANDROID_ABI MATCHES "arm") OR (APPLE AND NOT IOS AND CMAKE_OSX_ARCHITECTURES MATCHES "arm64"))
     set(USE_INTGEMM OFF CACHE BOOL "Use INTGEMM" FORCE)
-    message(STATUS "Disabling USE_INTGEMM for Android ARM ABI ${ANDROID_ABI}")
+    if(ANDROID)
+        message(STATUS "Disabling USE_INTGEMM for Android ARM ABI ${ANDROID_ABI}")
+    else()
+        message(STATUS "Disabling USE_INTGEMM for macOS ARM64")
+    endif()
 else()
     set(USE_INTGEMM ON CACHE BOOL "Use INTGEMM" FORCE)
 endif()

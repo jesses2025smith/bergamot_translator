@@ -61,8 +61,27 @@ target_link_libraries(bergamot_translator PRIVATE
 # Add compile options to suppress warnings
 target_compile_options(bergamot_translator PRIVATE
     -Wno-unused-value  # Suppress "expression result unused" warnings
-    -Wno-deprecated-declarations  # Suppress deprecated iterator warnings from yaml-cpp
+    -Wno-deprecated-declarations  # Suppress deprecated iterator warnings from yaml-cpp and sprintf warnings from protobuf-lite
+    -Wno-unknown-pragmas  # Suppress pragma diagnostic pop warnings from marian-dev/src/functional/operators.h
 )
+
+# macOS platform configuration
+if(APPLE AND NOT IOS)
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+        target_compile_definitions(bergamot_translator PRIVATE
+            ARM=1
+            FMA=1
+            SSE=1
+            USE_SIMD_UTILS=1
+            __ARM_NEON=1
+            __ARM_NEON__=1
+        )
+    elseif(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+        target_compile_options(bergamot_translator PRIVATE
+            -msse4.1
+        )
+    endif()
+endif()
 
 if (ANDROID)
   # Support Android 15 16k page size

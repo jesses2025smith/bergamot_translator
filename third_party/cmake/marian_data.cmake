@@ -156,6 +156,7 @@ target_compile_options(marian-data PRIVATE
     -Wno-unused-variable
     -Wno-unused-value
     -Wno-deprecated-declarations
+    -Wno-unknown-pragmas  # Suppress pragma diagnostic pop warnings from marian-dev/src/functional/operators.h
     -fPIC
 )
 

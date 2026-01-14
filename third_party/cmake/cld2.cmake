@@ -58,6 +58,7 @@ set_target_properties(cld2 PROPERTIES
 target_compile_options(cld2 PRIVATE 
     -Wno-narrowing
     -Wno-non-c-typedef-for-linkage  # Suppress anonymous non-C-compatible type warnings
+    -Wno-deprecated-declarations
 )
 
 # Add include directories

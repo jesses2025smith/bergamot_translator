@@ -1,6 +1,10 @@
 # Third-party library configuration and building
 # This file includes modular CMake files from cmake/ directory
 
+# Step 0: Initialize all git submodules first (recursive, including grandchild modules)
+include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/submodule.cmake)
+initialize_all_submodules()
+
 # Step 1: Load CMake configuration and policies
 include(${CMAKE_CURRENT_SOURCE_DIR}/cmake/third_party_config.cmake)
 

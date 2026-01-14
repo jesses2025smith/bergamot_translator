@@ -20,8 +20,26 @@
 using namespace marian::bergamot;
 
 // 全局状态
+// macOS: marian/bergamot destructors can throw during shutdown, which triggers
+// std::terminate (destructors are noexcept by default) and aborts the app.
+//
+// Workaround: keep the model cache alive until process exit by allocating it on
+// the heap on macOS, so its destructor is never run.
+#if defined(__APPLE__) && !defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
+static auto* model_cache = new std::unordered_map<std::string, std::shared_ptr<TranslationModel>>();
+#define MODEL_CACHE (*model_cache)
+#else
 static std::unordered_map<std::string, std::shared_ptr<TranslationModel>> model_cache;
-static std::unique_ptr<BlockingService> global_service = nullptr;
+#define MODEL_CACHE model_cache
+#endif
+
+// NOTE(macOS):
+// We intentionally avoid destroying BlockingService at process termination.
+// On macOS, bergamot/marian's logger teardown can throw during shutdown, which
+// triggers std::terminate from a destructor and aborts the app.
+//
+// Keeping the service alive until process exit avoids invoking that destructor.
+static BlockingService* global_service = nullptr;
 static std::mutex service_mutex;
 static std::mutex translation_mutex;
 
@@ -34,7 +52,7 @@ namespace {
             BlockingService::Config blockingConfig;
             blockingConfig.cacheSize = 256;
             blockingConfig.logger.level = "off";
-            global_service = std::make_unique<BlockingService>(blockingConfig);
+            global_service = new BlockingService(blockingConfig);
         }
     }
     
@@ -42,7 +60,7 @@ namespace {
         std::lock_guard<std::mutex> lock(service_mutex);
         
         // 检查模型是否已加载（双重检查，避免重复加载）
-        if (model_cache.find(key) != model_cache.end()) {
+        if (MODEL_CACHE.find(key) != MODEL_CACHE.end()) {
             return; // 模型已加载，直接返回
         }
         
@@ -54,7 +72,7 @@ namespace {
             std::shared_ptr<marian::Options> options = parseOptionsFromString(cfg, validate, pathsDir);
             
             // 创建模型
-            model_cache[key] = std::make_shared<TranslationModel>(options);
+            MODEL_CACHE[key] = std::make_shared<TranslationModel>(options);
         } catch (const std::exception &e) {
             // 重新抛出异常，让调用者处理
             throw std::runtime_error("Failed to load model " + key + ": " + e.what());
@@ -70,11 +88,11 @@ namespace {
         std::string key_str(key);
         
         // 检查模型是否已加载
-        if (model_cache.find(key_str) == model_cache.end()) {
+        if (MODEL_CACHE.find(key_str) == MODEL_CACHE.end()) {
             throw std::runtime_error("Model not loaded: " + key_str);
         }
         
-        std::shared_ptr<TranslationModel> model = model_cache[key_str];
+        std::shared_ptr<TranslationModel> model = MODEL_CACHE[key_str];
         
         std::vector<ResponseOptions> responseOptions;
         responseOptions.reserve(inputs.size());
@@ -106,15 +124,15 @@ namespace {
         std::string second_key_str(secondKey);
         
         // 检查模型是否已加载
-        if (model_cache.find(first_key_str) == model_cache.end()) {
+        if (MODEL_CACHE.find(first_key_str) == MODEL_CACHE.end()) {
             throw std::runtime_error("First model not loaded: " + first_key_str);
         }
-        if (model_cache.find(second_key_str) == model_cache.end()) {
+        if (MODEL_CACHE.find(second_key_str) == MODEL_CACHE.end()) {
             throw std::runtime_error("Second model not loaded: " + second_key_str);
         }
         
-        std::shared_ptr<TranslationModel> firstModel = model_cache[first_key_str];
-        std::shared_ptr<TranslationModel> secondModel = model_cache[second_key_str];
+        std::shared_ptr<TranslationModel> firstModel = MODEL_CACHE[first_key_str];
+        std::shared_ptr<TranslationModel> secondModel = MODEL_CACHE[second_key_str];
         
         std::vector<ResponseOptions> responseOptions;
         responseOptions.reserve(inputs.size());
@@ -184,8 +202,14 @@ namespace {
     
     void cleanup() {
         std::lock_guard<std::mutex> lock(service_mutex);
-        global_service.reset();
-        model_cache.clear();
+        // Do not delete global_service (see note above); just drop references.
+        global_service = nullptr;
+
+        // Do NOT clear the model cache on macOS: destroying marian objects can
+        // throw during shutdown and abort the process.
+#if !defined(__APPLE__) || defined(__IPHONE_OS_VERSION_MIN_REQUIRED)
+        MODEL_CACHE.clear();
+#endif
     }
 }
 

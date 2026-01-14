@@ -1,2 +1,5 @@
 #include "../../Flutter/Flutter-Release.xcconfig"
 #include "Warnings.xcconfig"
+
+// Allow entitlements file modification during build
+CODE_SIGN_ALLOW_ENTITLEMENTS_MODIFICATION = YES
