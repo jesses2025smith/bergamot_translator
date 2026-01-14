@@ -1,0 +1,26 @@
+diff --git a/3rd_party/marian-dev/src/microsoft/quicksand.h b/3rd_party/marian-dev/src/microsoft/quicksand.h
+index 0000000..1111111 100755
+--- a/3rd_party/marian-dev/src/microsoft/quicksand.h
++++ b/3rd_party/marian-dev/src/microsoft/quicksand.h
+@@ -1,4 +1,5 @@
+ #pragma once
++#include <cstdint>
+ #include <memory>
+ #include <string>
+ #include <tuple>
+diff --git a/3rd_party/marian-dev/src/3rd_party/sentencepiece/src/trainer_interface.cc b/3rd_party/marian-dev/src/3rd_party/sentencepiece/src/trainer_interface.cc
+index 0000000..2222222 100644
+--- a/3rd_party/marian-dev/src/3rd_party/sentencepiece/src/trainer_interface.cc
++++ b/3rd_party/marian-dev/src/3rd_party/sentencepiece/src/trainer_interface.cc
+@@ -208,7 +208,10 @@ bool TrainerInterface::IsValidSentencePiece(
+     return false;
+   }
+ 
+-  constexpr unicode_script::ScriptType kAnyType =
++  // Changed from constexpr to const to avoid C++11 strict constexpr requirements
++  // In C++11, static_cast in constexpr may not be recognized as constant expression
++  // Even with C++14, some compilers may still have issues with enum static_cast in constexpr
++  const unicode_script::ScriptType kAnyType =
+       static_cast<unicode_script::ScriptType>(-1);
+ 
+   auto is_number = [](char32 c) { return (c >= 0x30 && c <= 0x39); };
