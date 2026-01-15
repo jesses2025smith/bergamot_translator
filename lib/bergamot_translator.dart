@@ -70,50 +70,68 @@ class _BergamotBackground {
 
   Isolate? _isolate;
   SendPort? _sendPort;
-  final ReceivePort _receivePort = ReceivePort();
+  ReceivePort? _receivePort;
+  StreamSubscription<dynamic>? _receiveSub;
+  Future<void>? _starting;
 
   int _nextId = 1;
   final Map<int, Completer<Object?>> _pending = {};
 
   Future<void> _ensureStarted() async {
     if (_sendPort != null) return;
+    if (_starting != null) {
+      await _starting!;
+      return;
+    }
 
-    // 监听来自 worker isolate 的响应
-    _receivePort.listen((dynamic message) {
-      if (message is SendPort) {
-        _sendPort = message;
-        return;
-      }
+    final handshake = Completer<SendPort>();
+    _starting = () async {
+      _receivePort ??= ReceivePort();
 
-      if (message is! Map) return;
-      final id = message['id'];
-      if (id is! int) return;
+      // 监听来自 worker isolate 的响应（含握手 sendPort）
+      _receiveSub ??= _receivePort!.listen((dynamic message) {
+        if (message is SendPort) {
+          _sendPort = message;
+          if (!handshake.isCompleted) {
+            handshake.complete(message);
+          }
+          return;
+        }
 
-      final completer = _pending.remove(id);
-      if (completer == null) return;
+        if (message is! Map) return;
+        final id = message['id'];
+        if (id is! int) return;
 
-      final ok = message['ok'] == true;
-      if (ok) {
-        completer.complete(message['result']);
-      } else {
-        final err = message['error']?.toString() ?? 'Unknown error';
-        completer.completeError(BergamotException(err));
-      }
-    });
+        final completer = _pending.remove(id);
+        if (completer == null) return;
 
-    _isolate = await Isolate.spawn<_IsolateInit>(
-      _bergamotWorkerMain,
-      _IsolateInit(_receivePort.sendPort),
-      debugName: 'bergamot_translator_worker',
-    );
+        final ok = message['ok'] == true;
+        if (ok) {
+          completer.complete(message['result']);
+        } else {
+          final err = message['error']?.toString() ?? 'Unknown error';
+          completer.completeError(BergamotException(err));
+        }
+      });
 
-    // 等待握手拿到 sendPort
-    final start = DateTime.now();
-    while (_sendPort == null) {
-      await Future<void>.delayed(const Duration(milliseconds: 1));
-      if (DateTime.now().difference(start).inSeconds > 5) {
+      _isolate = await Isolate.spawn<_IsolateInit>(
+        _bergamotWorkerMain,
+        _IsolateInit(_receivePort!.sendPort),
+        debugName: 'bergamot_translator_worker',
+      );
+
+      try {
+        _sendPort = await handshake.future
+            .timeout(const Duration(seconds: 5));
+      } on TimeoutException {
         throw BergamotException('Failed to start bergamot worker isolate (timeout)');
       }
+    }();
+
+    try {
+      await _starting!;
+    } finally {
+      _starting = null;
     }
   }
 
@@ -155,10 +173,24 @@ class _BergamotBackground {
   Future<void> cleanup() => _call<void>('cleanup', const {});
 
   void shutdown() {
+    // 让所有未完成的请求尽快失败，避免退出时 await 永久悬挂。
+    if (_pending.isNotEmpty) {
+      final err = BergamotException('Bergamot worker shutdown');
+      for (final completer in _pending.values) {
+        if (!completer.isCompleted) {
+          completer.completeError(err);
+        }
+      }
+      _pending.clear();
+    }
+
     _isolate?.kill(priority: Isolate.immediate);
     _isolate = null;
     _sendPort = null;
-    _receivePort.close();
+    _receiveSub?.cancel();
+    _receiveSub = null;
+    _receivePort?.close();
+    _receivePort = null;
   }
 }
 

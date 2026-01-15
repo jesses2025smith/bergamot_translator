@@ -202,7 +202,7 @@ class TranslationService {
   }
 
   /// 清理资源
-  static void cleanup() {
-    bergamot.BergamotTranslator.cleanup();
+  static Future<void> cleanup() async {
+    await bergamot.BergamotTranslator.cleanupAsync();
   }
 }
