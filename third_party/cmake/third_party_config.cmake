@@ -90,6 +90,60 @@ if(ANDROID)
     set(Threads_FOUND TRUE CACHE INTERNAL "Threads are available on Android")
 endif()
 
+# Detect iOS platform (device/simulator) via -DIOS=ON (passed from CocoaPods script_phase)
+if(IOS)
+    message(STATUS "Configuring for iOS platform")
+
+    # Some third-party headers assume <fenv.h> was included for FE_* rounding modes.
+    # iOS toolchains may not include it implicitly, causing build failures in simd_utils.
+    add_compile_options(-include fenv.h)
+    message(STATUS "Adding -include fenv.h for iOS builds")
+
+    # iOS uses UTF-8 filesystem paths in practice; avoid iconv/nl_langinfo dependencies in pathie-cpp.
+    # Must be global because marian-dev builds its own pathie-cpp target.
+    add_compile_definitions(PATHIE_ASSUME_UTF8_ON_UNIX)
+    message(STATUS "Adding global PATHIE_ASSUME_UTF8_ON_UNIX compile definition for iOS")
+
+    # Use internal PCRE2 for ssplit-cpp (iOS does not provide system libpcre2-8).
+    set(SSPLIT_USE_INTERNAL_PCRE2 ON CACHE BOOL "Use internal PCRE2 instead of system PCRE2" FORCE)
+    message(STATUS "Enabling SSPLIT_USE_INTERNAL_PCRE2 for iOS")
+
+    # SentencePiece iOS quirk:
+    # Under iOS toolchains, CMake may treat executables as MACOSX_BUNDLE, and
+    # sentencepiece's install(TARGETS ...) then requires BUNDLE DESTINATION.
+    # Keep building CLI tools (marian-dev expects the targets), but force
+    # executables to NOT be bundles.
+    set(CMAKE_MACOSX_BUNDLE OFF CACHE BOOL "Do not build executables as bundles (iOS)" FORCE)
+    set(SPM_BUILD_LIBRARY_ONLY OFF CACHE BOOL "Build SentencePiece CLI tools (required by marian-dev) " FORCE)
+    message(STATUS "Configuring SentencePiece for iOS: CMAKE_MACOSX_BUNDLE=OFF, SPM_BUILD_LIBRARY_ONLY=OFF")
+
+    # iOS targets are ARM64; make sure marian-dev detects ARM and uses simd_utils/NEON paths.
+    set(USE_SIMD_UTILS ON CACHE BOOL "Enable simde to target instruction sets" FORCE)
+    set(USE_WASM_COMPATIBLE_SOURCES OFF CACHE BOOL "Enable the minimal marian sources that compile to wasm" FORCE)
+    set(CMAKE_TARGET_ARCHITECTURE_CODE "arm" CACHE STRING "Target architecture code" FORCE)
+    add_compile_definitions(ARM FMA SSE)
+    message(STATUS "Configuring Marian for iOS ARM (USE_SIMD_UTILS=ON, USE_INTGEMM=OFF, ARM/FMA/SSE defs)")
+
+    # Avoid x86 CPU intrinsics detection on iOS:
+    # marian-dev adds -msse2/-msse3/... when BUILD_ARCH=native, which breaks arm64.
+    set(AUTO_CPU_DETECT OFF CACHE BOOL "Disable CPU feature detection for iOS cross-compile" FORCE)
+    set(BUILD_ARCH "armv8-a" CACHE STRING "Build architecture for iOS" FORCE)
+    message(STATUS "Setting BUILD_ARCH=armv8-a and AUTO_CPU_DETECT=OFF for iOS")
+
+    # iOS thread configuration:
+    # CMake's FindThreads can fail under cross-compilation (sentencepiece does find_package(Threads)).
+    # iOS has pthreads via libSystem; provide hints so Threads::Threads is considered available.
+    # Prefer pthreads and provide link flags (libpthread is available as a .tbd in the iOS SDK).
+    set(CMAKE_HAVE_THREADS_LIBRARY 1 CACHE INTERNAL "iOS has threads support" FORCE)
+    set(CMAKE_USE_WIN32_THREADS_INIT 0 CACHE INTERNAL "Do not use Win32 threads on iOS" FORCE)
+    set(CMAKE_USE_PTHREADS_INIT 1 CACHE INTERNAL "Use pthreads on iOS" FORCE)
+    set(CMAKE_HAVE_LIBC_PTHREAD 1 CACHE INTERNAL "pthreads are in libc/libSystem on iOS" FORCE)
+    set(CMAKE_THREAD_LIBS_INIT "-lpthread" CACHE STRING "Thread libraries" FORCE)
+    set(THREADS_PREFER_PTHREAD_FLAG ON CACHE BOOL "Prefer pthread flag on iOS" FORCE)
+    set(Threads_FOUND TRUE CACHE BOOL "Threads are available on iOS" FORCE)
+    message(STATUS "Providing iOS pthread hints for FindThreads")
+endif()
+
 # Detect macOS ARM64 platform (Apple Silicon)
 if(APPLE AND NOT IOS AND CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
     message(STATUS "Configuring for macOS ARM64 platform (Apple Silicon)")
@@ -147,10 +201,12 @@ set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 # IMPORTANT: intgemm is x86/SSE-centric and includes <emmintrin.h>. For Android ARM (arm64-v8a/armeabi-v7a)
 # and macOS ARM64 this causes compilation failures ("emmintrin.h only meant for x86/x64").
 # Align behavior with marian-dev upstream: ARM builds should use RUY/NEON paths instead of intgemm.
-if((ANDROID AND ANDROID_ABI MATCHES "arm") OR (APPLE AND NOT IOS AND CMAKE_OSX_ARCHITECTURES MATCHES "arm64"))
+if((ANDROID AND ANDROID_ABI MATCHES "arm") OR (IOS) OR (APPLE AND NOT IOS AND CMAKE_OSX_ARCHITECTURES MATCHES "arm64"))
     set(USE_INTGEMM OFF CACHE BOOL "Use INTGEMM" FORCE)
     if(ANDROID)
         message(STATUS "Disabling USE_INTGEMM for Android ARM ABI ${ANDROID_ABI}")
+    elseif(IOS)
+        message(STATUS "Disabling USE_INTGEMM for iOS")
     else()
         message(STATUS "Disabling USE_INTGEMM for macOS ARM64")
     endif()

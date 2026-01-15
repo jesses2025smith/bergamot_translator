@@ -28,7 +28,14 @@ project(bergamot_translator_library VERSION 0.0.1 LANGUAGES CXX)
 # Include third-party library configurations
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../third_party third_party)
 
-add_library(bergamot_translator SHARED
+set(_BERGAMOT_TRANSLATOR_LIBTYPE SHARED)
+# iOS does not support arbitrary dylibs; build a static library when cross-compiling for iOS.
+# (CocoaPods will still package this plugin as a framework, and link these objects in.)
+if(IOS)
+  set(_BERGAMOT_TRANSLATOR_LIBTYPE STATIC)
+endif()
+
+add_library(bergamot_translator ${_BERGAMOT_TRANSLATOR_LIBTYPE}
   "bergamot_translator.cpp"
 )
 
