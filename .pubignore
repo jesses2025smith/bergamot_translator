@@ -36,6 +36,7 @@ third_party/bergamot-translator/3rd_party/ssplit-cpp/src/3rd-party/*/doc/
 
 # CLD2
 third_party/cld2/docs/
+third_party/cld2/internal/test_shuffle_1000_48_666.utf8.gz
 
 # Patches
 third_party/patches/
