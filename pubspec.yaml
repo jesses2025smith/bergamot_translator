@@ -1,8 +1,8 @@
 name: bergamot_translator
 description: "Bergamot Translator is a Flutter FFI plugin for the Bergamot Translator library."
 version: 0.0.1
-homepage:
-publish_to: none
+homepage: https://github.com/jesses2025smith/bergamot_translator
+publish_to: https://pub.dev
 
 environment:
   sdk: ^3.9.2

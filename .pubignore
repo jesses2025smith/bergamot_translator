@@ -1,0 +1,10 @@
+third_party/bergamot-translator/3rd_party/marian-dev/examples/tools/Makefile
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/Makefile
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/ape/decode.yml
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/ape/score.yml
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/download-models.sh
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/lmgec/config.yml
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/lmgec/preprocess.sh
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/transformer/decode.yml
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/wmt16_systems/amun.en-de.yml
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/wmt16_systems/marian.en-de.ensemble.yml
