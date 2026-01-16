@@ -1,10 +1,41 @@
-third_party/bergamot-translator/3rd_party/marian-dev/examples/tools/Makefile
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/Makefile
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/ape/decode.yml
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/ape/score.yml
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/download-models.sh
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/lmgec/config.yml
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/lmgec/preprocess.sh
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/transformer/decode.yml
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/wmt16_systems/amun.en-de.yml
-third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/models/wmt16_systems/marian.en-de.ensemble.yml
+# Bergamot Translator
+third_party/bergamot-translator/examples/
+third_party/bergamot-translator/bergamot-translator-tests/
+third_party/bergamot-translator/doc/
+third_party/bergamot-translator/wasm/
+third_party/bergamot-translator/bindings/
+third_party/bergamot-translator/patches/
+third_party/bergamot-translator/src/tests/
+
+# Marian-dev
+third_party/bergamot-translator/3rd_party/marian-dev/examples/
+third_party/bergamot-translator/3rd_party/marian-dev/regression-tests/
+third_party/bergamot-translator/3rd_party/marian-dev/doc/
+third_party/bergamot-translator/3rd_party/marian-dev/wasm/
+third_party/bergamot-translator/3rd_party/marian-dev/src/examples/
+third_party/bergamot-translator/3rd_party/marian-dev/src/tests/
+
+# Marian-dev third-party libraries (examples, tests, docs, benchmarks, demos)
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/examples/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/tests/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/test/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/doc/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/docs/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/benchmarks/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/demos/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/samples/
+third_party/bergamot-translator/3rd_party/marian-dev/src/3rd_party/*/wasm/
+
+# Pybind11
+third_party/bergamot-translator/3rd_party/pybind11/docs/
+third_party/bergamot-translator/3rd_party/pybind11/tests/
+
+# SSplit-cpp
+third_party/bergamot-translator/3rd_party/ssplit-cpp/tests/
+third_party/bergamot-translator/3rd_party/ssplit-cpp/src/3rd-party/*/doc/
+
+# CLD2
+third_party/cld2/docs/
+
+# Patches
+third_party/patches/
