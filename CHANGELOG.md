@@ -1,3 +1,4 @@
 ## 0.0.1
 
-* TODO: Describe initial release.
+* Linux: Can compile for Linux and Android applications
+* macOS: Can compile for macOS, iOS, and Android applications
